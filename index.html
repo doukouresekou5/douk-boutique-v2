@@ -182,7 +182,7 @@ tr.row-faible td:first-child,tr.row-rupture td:first-child{box-shadow:inset 3px 
     <div class="seal" id="sealMark">D</div>
     <div class="masthead-text">
       <h1 id="bizName" contenteditable="true" spellcheck="false">DOUK BOUTIQUE</h1>
-      <div class="subtitle">Stock · Commandes · Achats fournisseurs · Catalogue · Crédits <span style="opacity:.55">· v9</span></div>
+      <div class="subtitle">Stock · Commandes · Achats fournisseurs · Catalogue · Crédits <span style="opacity:.55">· v10</span></div>
     </div>
     <div class="backup-actions">
       <button class="btn ghost small" onclick="exportBackup()">⬇ Sauvegarder</button>
@@ -445,9 +445,12 @@ tr.row-faible td:first-child,tr.row-rupture td:first-child{box-shadow:inset 3px 
       <div class="field"><label>Quantité</label><input id="a-qty" type="number" min="1" step="1" value="1" oninput="recalcPurchaseModal()"></div>
       <div class="field"><label>Frais</label><input id="a-frais" type="number" min="0" step="1" oninput="recalcPurchaseModal()"></div>
     </div>
+    <div class="field"><label>Monnaie de la commande</label>
+      <select id="a-currency" onchange="updateCurrencyLabels();recalcPurchaseModal()"><option value="USD">Dollar ($)</option><option value="CNY">Yuan (¥ CNY)</option></select>
+    </div>
     <div class="field-row">
-      <div class="field"><label>Prix en $</label><input id="a-price-usd" type="text" inputmode="decimal" placeholder="Ex. 12,50" oninput="recalcPurchaseModal()"></div>
-      <div class="field"><label>Taux $</label><input id="a-rate" type="number" min="0" step="0.01" oninput="recalcPurchaseModal()"></div>
+      <div class="field"><label id="a-price-label">Prix en $</label><input id="a-price-usd" type="text" inputmode="decimal" placeholder="Ex. 12,50" oninput="recalcPurchaseModal()"></div>
+      <div class="field"><label id="a-rate-label">Taux $</label><input id="a-rate" type="number" min="0" step="0.01" oninput="recalcPurchaseModal()"></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Prix unitaire CFA</label><input id="a-unit-cfa" type="number" min="0" step="1"></div>
@@ -1011,6 +1014,13 @@ function parseDecimal(str){
   return parseFloat(String(str||'').replace(',','.'))||0;
 }
 
+function currencySymbol(c){ return c==='CNY' ? '¥' : '$'; }
+function updateCurrencyLabels(){
+  const c = document.getElementById('a-currency').value || 'USD';
+  const sym = currencySymbol(c);
+  document.getElementById('a-price-label').textContent = 'Prix en ' + sym + (c==='CNY' ? ' (yuan)' : '');
+  document.getElementById('a-rate-label').textContent = 'Taux ' + sym + (c==='CNY' ? ' (CFA pour 1 ¥)' : ' (CFA pour 1 $)');
+}
 function recalcPurchaseModal(){
   const priceUsd = parseDecimal(document.getElementById('a-price-usd').value);
   const rate = parseFloat(document.getElementById('a-rate').value)||0;
@@ -1041,6 +1051,7 @@ function openPurchaseModal(id){
     if(a.image){ document.getElementById('a-image-preview').src = a.image; document.getElementById('a-image-preview').style.display='inline-block'; }
     document.getElementById('a-qty').value = a.qty || 1;
     document.getElementById('a-frais').value = a.frais || '';
+    document.getElementById('a-currency').value = a.currency || 'USD';
     document.getElementById('a-price-usd').value = a.priceUsd || '';
     document.getElementById('a-rate').value = a.rate || '';
     document.getElementById('a-unit-cfa').value = a.unitCfa || '';
@@ -1056,8 +1067,10 @@ function openPurchaseModal(id){
     ['a-supplier','a-product-name','a-image','a-frais','a-price-usd','a-rate','a-unit-cfa','a-total-cfa','a-buy','a-sell','a-marge','a-ref'].forEach(fid=>document.getElementById(fid).value='');
     document.getElementById('a-date').value = todayStr();
     document.getElementById('a-qty').value = 1;
+    document.getElementById('a-currency').value = 'USD';
     document.getElementById('a-status').value = 'attente';
   }
+  updateCurrencyLabels();
   document.getElementById('overlay-purchase').classList.add('active');
 }
 
@@ -1076,6 +1089,7 @@ function savePurchase(){
     productName,
     image: document.getElementById('a-image').value || '',
     qty: parseInt(document.getElementById('a-qty').value)||1,
+    currency: document.getElementById('a-currency').value || 'USD',
     priceUsd: parseDecimal(document.getElementById('a-price-usd').value),
     rate: parseFloat(document.getElementById('a-rate').value)||0,
     unitCfa: parseFloat(document.getElementById('a-unit-cfa').value)||0,
@@ -1137,7 +1151,7 @@ function renderPurchases(){
   }
   wrap.innerHTML = `<table class="dense"><thead><tr>
     <th>N° commande</th><th>Fournisseur</th><th>Date</th><th>Produit acheté</th><th>Quantité</th>
-    <th>Prix $</th><th>Taux $</th><th>Prix unit. CFA</th><th>Prix total CFA</th><th>Frais</th>
+    <th>Prix devise</th><th>Taux</th><th>Prix unit. CFA</th><th>Prix total CFA</th><th>Frais</th>
     <th>Prix d'achat</th><th>Prix de vente</th><th>Marge</th><th>Référence</th><th>Statut</th><th></th>
   </tr></thead><tbody>
   ${list.map(a=>`<tr>
@@ -1151,8 +1165,8 @@ function renderPurchases(){
         </div>
       </td>
       <td data-label="Quantité">${a.qty}</td>
-      <td data-label="Prix $">${a.priceUsd ? '$'+a.priceUsd.toLocaleString('fr-FR') : '—'}</td>
-      <td data-label="Taux $">${a.rate || '—'}</td>
+      <td data-label="Prix devise">${a.priceUsd ? currencySymbol(a.currency)+a.priceUsd.toLocaleString('fr-FR') : '—'}</td>
+      <td data-label="Taux">${a.rate ? a.rate+' ('+(a.currency==='CNY'?'¥':'$')+')' : '—'}</td>
       <td data-label="Prix unit. CFA">${money(a.unitCfa)}</td>
       <td data-label="Prix total CFA" class="total-line">${money(a.totalCfa)}</td>
       <td data-label="Frais">${money(a.frais)}</td>
