@@ -182,7 +182,7 @@ tr.row-faible td:first-child,tr.row-rupture td:first-child{box-shadow:inset 3px 
     <div class="seal" id="sealMark">D</div>
     <div class="masthead-text">
       <h1 id="bizName" contenteditable="true" spellcheck="false">DOUK BOUTIQUE</h1>
-      <div class="subtitle">Stock · Commandes · Achats fournisseurs · Catalogue · Crédits <span style="opacity:.55">· v10</span></div>
+      <div class="subtitle">Stock · Commandes · Achats fournisseurs · Catalogue · Crédits <span style="opacity:.55">· v12</span></div>
     </div>
     <div class="backup-actions">
       <button class="btn ghost small" onclick="exportBackup()">⬇ Sauvegarder</button>
@@ -444,6 +444,11 @@ tr.row-faible td:first-child,tr.row-rupture td:first-child{box-shadow:inset 3px 
     <div class="field-row">
       <div class="field"><label>Quantité</label><input id="a-qty" type="number" min="1" step="1" value="1" oninput="recalcPurchaseModal()"></div>
       <div class="field"><label>Frais</label><input id="a-frais" type="number" min="0" step="1" oninput="recalcPurchaseModal()"></div>
+    </div>
+    <div id="a-extra-wrap" class="field">
+      <label>Autres produits au même prix et même fournisseur</label>
+      <div class="items-editor" id="a-extra" style="display:none;"></div>
+      <button type="button" class="add-line" onclick="addExtraLine()">+ Ajouter un produit au même prix</button>
     </div>
     <div class="field"><label>Monnaie de la commande</label>
       <select id="a-currency" onchange="updateCurrencyLabels();recalcPurchaseModal()"><option value="USD">Dollar ($)</option><option value="CNY">Yuan (¥ CNY)</option></select>
@@ -1021,6 +1026,29 @@ function updateCurrencyLabels(){
   document.getElementById('a-price-label').textContent = 'Prix en ' + sym + (c==='CNY' ? ' (yuan)' : '');
   document.getElementById('a-rate-label').textContent = 'Taux ' + sym + (c==='CNY' ? ' (CFA pour 1 ¥)' : ' (CFA pour 1 $)');
 }
+function addExtraLine(){
+  const box = document.getElementById('a-extra');
+  box.style.display = '';
+  const row = document.createElement('div');
+  row.className = 'item-line';
+  row.innerHTML = `<div class="v-image-box" title="Photo du produit" onclick="this.querySelector('input[type=file]').click()">
+      <input type="file" accept="image/*" style="display:none;" onchange="handleVariantImage(this)">
+      <img class="v-image-preview" style="display:none;">
+      <span class="v-image-placeholder" style="display:flex;">📷</span>
+      <input type="hidden" class="v-image" value="">
+    </div>
+    <input class="x-name" list="productNamesList" placeholder="Nom du produit" style="flex:2">
+    <input class="x-ref" placeholder="Référence">
+    <input class="x-qty" type="number" min="1" step="1" value="1" title="Quantité" aria-label="Quantité" style="flex:0 0 64px;">
+    <button type="button" title="Retirer" onclick="this.parentNode.remove()">✕</button>`;
+  box.appendChild(row);
+  row.querySelector('.x-name').focus();
+}
+function resetExtraLines(){
+  const box = document.getElementById('a-extra');
+  box.innerHTML = '';
+  box.style.display = 'none';
+}
 function recalcPurchaseModal(){
   const priceUsd = parseDecimal(document.getElementById('a-price-usd').value);
   const rate = parseFloat(document.getElementById('a-rate').value)||0;
@@ -1070,6 +1098,8 @@ function openPurchaseModal(id){
     document.getElementById('a-currency').value = 'USD';
     document.getElementById('a-status').value = 'attente';
   }
+  resetExtraLines();
+  document.getElementById('a-extra-wrap').style.display = id ? 'none' : '';
   updateCurrencyLabels();
   document.getElementById('overlay-purchase').classList.add('active');
 }
@@ -1103,7 +1133,16 @@ function savePurchase(){
   };
 
   if(existing) Object.assign(existing, data);
-  else state.purchases.push({id:uid(), ...data});
+  else {
+    state.purchases.push({id:uid(), ...data});
+    // autres produits au même prix / même fournisseur : une ligne d'achat chacun, même n° de commande
+    document.querySelectorAll('#a-extra .item-line').forEach(r=>{
+      const n = r.querySelector('.x-name').value.trim();
+      if(!n) return;
+      const q = parseInt(r.querySelector('.x-qty').value)||1;
+      state.purchases.push({id:uid(), ...data, productName:n, qty:q, image:r.querySelector('.v-image').value||'', ref:r.querySelector('.x-ref').value.trim(), totalCfa:data.unitCfa*q});
+    });
+  }
 
   closeModal('overlay-purchase');
   saveState(); renderAll();
