@@ -138,6 +138,10 @@ tr.row-faible td:first-child,tr.row-rupture td:first-child{box-shadow:inset 3px 
 .cat-stock{margin:8px 4px 0;font-size:12px;}
 
 .total-line{font-weight:700;}
+.jin{width:96px;padding:6px 8px;border:1px solid var(--rule);border-radius:8px;font-family:inherit;font-size:13px;background:#fff;color:var(--ink);}
+.jsel{max-width:175px;padding:6px 8px;border:1px solid var(--rule);border-radius:8px;font-family:inherit;font-size:13px;background:#fff;color:var(--ink);}
+.gain-pos{color:var(--petrol-dark);font-weight:700;}
+.gain-neg{color:var(--rust);font-weight:700;}
 .muted{color:var(--ink-soft);}
 
 /* tableau de bord */
@@ -182,7 +186,7 @@ tr.row-faible td:first-child,tr.row-rupture td:first-child{box-shadow:inset 3px 
     <div class="seal" id="sealMark">D</div>
     <div class="masthead-text">
       <h1 id="bizName" contenteditable="true" spellcheck="false">DOUK BOUTIQUE</h1>
-      <div class="subtitle">Stock · Commandes · Achats fournisseurs · Catalogue · Crédits <span style="opacity:.55">· v12</span></div>
+      <div class="subtitle">Stock · Commandes · Achats fournisseurs · Catalogue · Crédits <span style="opacity:.55">· v16</span></div>
     </div>
     <div class="backup-actions">
       <button class="btn ghost small" onclick="exportBackup()">⬇ Sauvegarder</button>
@@ -198,6 +202,7 @@ tr.row-faible td:first-child,tr.row-rupture td:first-child{box-shadow:inset 3px 
     <button class="tab" data-tab="achats">Achats fournisseur <span class="count" id="cnt-achats">0</span></button>
     <button class="tab" data-tab="catalogue">Catalogue</button>
     <button class="tab" data-tab="credits">Crédits <span class="count" id="cnt-credits">0</span></button>
+    <button class="tab" data-tab="jumia">Jumia</button>
   </div>
 
   <!-- TABLEAU DE BORD -->
@@ -291,6 +296,20 @@ tr.row-faible td:first-child,tr.row-rupture td:first-child{box-shadow:inset 3px 
     <div class="card" style="padding:14px 18px;margin-top:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
       <span class="muted">Total restant à recevoir</span><b id="creditsTotal">0 CFA</b>
     </div>
+  </div>
+
+  <!-- JUMIA -->
+  <div class="panel" id="panel-jumia">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <input id="jumiaPick" list="jumiaProducts" autocomplete="off" placeholder="Choisir un produit du stock…" style="padding:9px 12px;border:1px solid var(--rule);border-radius:10px;font-family:inherit;font-size:13.5px;background:#fff;color:var(--ink);min-width:320px;">
+        <datalist id="jumiaProducts"></datalist>
+      </div>
+    </div>
+    <div class="stock-alert" style="background:#EEF7F2;border-color:#BFE0CF;color:var(--ink);">
+      <span>Choisis un produit du stock, sa catégorie Jumia et le prix net que tu veux recevoir : le prix à afficher sur Jumia et les frais Jumia se calculent tout seuls (commission 2026 TVA incluse + frais fixe). Frais fixe vide = 600 FCFA.</span>
+    </div>
+    <div class="card" id="jumiaTableWrap"></div>
   </div>
 </div>
 
@@ -485,7 +504,7 @@ tr.row-faible td:first-child,tr.row-rupture td:first-child{box-shadow:inset 3px 
 </div>
 
 <script>
-let state = { products: [], orders: [], purchases: [], credits: [], bizName: "DOUK BOUTIQUE" };
+let state = { products: [], orders: [], purchases: [], credits: [], jumiaLines: [], bizName: "DOUK BOUTIQUE" };
 let ready = false;
 
 async function loadState(){
@@ -744,6 +763,83 @@ function productSorties(productId){
 function availableStock(p){
   return (p.stockInitial||0) + (p.entrees||0) - productSorties(p.id);
 }
+
+// ================= JUMIA : commission et gain =================
+// Commissions 2026, TVA incluse (colonne « Effective 8 Juin »). Prix Jumia = (Prix vendeur + Frais fixe) / (1 - Commission)
+const JUMIA_COMMISSIONS = {
+  'Audio & Hi-Fi':15,'Accessoires Informatique':16,'Accessoires Électroniques':15,'Appareils et outils pour cheveux':15,
+  'Accessoires pour Animaux':15,'Accessoires Téléphonie':17,'Articles de Sport':16,'Consoles de jeux':8,'Enfants & Bébés':18,
+  'Épicerie':18,'Épicerie (gros volumes)':18,'Gros Électroménagers':15,'Imprimantes & Scanners':9,'Instruments de Musique':15,
+  'Jouets & Jeux':18,'Jeux Vidéo':9,'Livres & Papeterie':15,'Maison':20,'Mode Enfant & Bébé':15,'Matelas':20,'Meubles':20,
+  'Mode':17,'Ordinateurs Portables & PC de Bureau':7,'Protection Électrique':20,'Petit Électroménager':17,'Plein air & Jardin':20,
+  'Santé & Beauté':16,'Tablettes':10,'Télévisions':7,'Tabac':10,'Téléphones Portables':4,'TV Grand Écran':10,
+  'Tenues de Sport':15,'Téléphones basiques':8
+};
+const JUMIA_FRAIS_DEFAUT = 600; // frais fixe utilisé si le champ « Frais fixe » est vide
+function jumiaFeeOf(l){ return (l.fee!==undefined && l.fee!==null && l.fee!=='') ? Number(l.fee) : JUMIA_FRAIS_DEFAUT; }
+function jumiaLabel(p){ return p.name + (p.color ? ' — ' + p.color : '') + (p.ref ? ' (' + p.ref + ')' : ''); }
+// prix Jumia = (prix net voulu + frais fixe) / (1 - commission), arrondi aux 10 FCFA supérieurs
+function jumiaOut(l){
+  const p = state.products.find(x=>x.id===l.productId);
+  const rate = JUMIA_COMMISSIONS[l.cat];
+  const dash = '<span class="muted">—</span>';
+  if(rate===undefined || !(l.target>0)){
+    return {price:`<span class="muted" style="font-size:12px;">${rate===undefined?'Choisis une catégorie':'Entre le prix voulu'}</span>`, fees:dash};
+  }
+  const fee = jumiaFeeOf(l);
+  const price = Math.ceil((l.target + fee) / (1 - rate/100) / 10) * 10;
+  const recu = price * (1 - rate/100) - fee;
+  return {
+    price: `<strong>${money(price)}</strong>`,
+    fees: `${money(Math.round(price - recu))}<div class="muted" style="font-size:11px;">commission ${rate} % + frais fixe ${money(fee)}</div>`
+  };
+}
+function setJumiaLine(id, field, val){
+  const l = state.jumiaLines.find(x=>x.id===id);
+  if(!l) return;
+  l[field] = field==='cat' ? val : (val==='' ? '' : (parseFloat(val)||0));
+  saveState();
+  const o = jumiaOut(l), tr = document.getElementById('jl-'+id);
+  if(tr) tr.querySelectorAll('[data-o]').forEach(td=>{ td.innerHTML = o[td.dataset.o]; });
+}
+function deleteJumiaLine(id){
+  state.jumiaLines = state.jumiaLines.filter(x=>x.id!==id);
+  saveState(); renderJumia();
+}
+function renderJumia(){
+  document.getElementById('jumiaProducts').innerHTML = state.products.map(p=>`<option value="${esc(jumiaLabel(p))}"></option>`).join('');
+  const wrap = document.getElementById('jumiaTableWrap');
+  if(state.jumiaLines.length===0){
+    wrap.innerHTML = `<div class="empty"><div class="big">Aucun produit</div>Choisis un produit du stock dans la barre ci-dessus pour calculer son prix Jumia.</div>`;
+    return;
+  }
+  const opts = (sel)=>Object.keys(JUMIA_COMMISSIONS).map(k=>`<option value="${esc(k)}"${sel===k?' selected':''}>${esc(k)} (${JUMIA_COMMISSIONS[k]} %)</option>`).join('');
+  wrap.innerHTML = `<table class="dense"><thead><tr>
+    <th>Produit</th><th>Catégorie Jumia</th><th>Frais fixe</th><th>Prix voulu (net)</th><th>Prix à mettre sur Jumia</th><th>Frais Jumia</th><th></th>
+  </tr></thead><tbody>
+  ${state.jumiaLines.map(l=>{
+    const p = state.products.find(x=>x.id===l.productId), o = jumiaOut(l);
+    return `<tr id="jl-${l.id}">
+      <td data-label="Produit"><div style="display:flex;align-items:center;gap:8px;">${p && p.image ? `<img src="${p.image}" style="width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid var(--rule);">` : ''}<div>${p ? esc(p.name) : '(produit supprimé)'}<div class="muted" style="font-size:11px;">${p ? esc(p.ref) : ''}</div></div></div></td>
+      <td data-label="Catégorie Jumia"><select class="jsel" onchange="setJumiaLine('${l.id}','cat',this.value)"><option value="">Choisir…</option>${opts(l.cat)}</select></td>
+      <td data-label="Frais fixe"><input class="jin" type="number" min="0" step="1" style="width:74px;" value="${l.fee===''||l.fee===undefined?'':l.fee}" placeholder="${JUMIA_FRAIS_DEFAUT}" oninput="setJumiaLine('${l.id}','fee',this.value)"></td>
+      <td data-label="Prix voulu (net)"><input class="jin" type="number" min="0" step="10" value="${l.target||''}" placeholder="Ex. 15000" oninput="setJumiaLine('${l.id}','target',this.value)"></td>
+      <td data-label="Prix à mettre sur Jumia" data-o="price">${o.price}</td>
+      <td data-label="Frais Jumia" data-o="fees">${o.fees}</td>
+      <td><div class="rowactions"><button onclick="deleteJumiaLine('${l.id}')">Retirer</button></div></td>
+    </tr>`;
+  }).join('')}
+  </tbody></table>`;
+}
+document.getElementById('jumiaPick').addEventListener('change', (e)=>{
+  const v = e.target.value.trim();
+  if(!v) return;
+  const p = state.products.find(x=>jumiaLabel(x)===v);
+  if(!p){ alert('Choisis un produit dans la liste proposée.'); return; }
+  state.jumiaLines.unshift({id:uid(), productId:p.id, cat:'', fee:'', target:''});
+  e.target.value = '';
+  saveState(); renderJumia();
+});
 
 function renderStock(){
   const search = document.getElementById('stockSearch').value.toLowerCase();
@@ -1402,6 +1498,7 @@ function creditPris(c){ return Array.isArray(c.prises) ? c.prises.reduce((s,v)=>
 function creditRest(c){ return Math.max(0, creditPris(c) - creditDonne(c)); }
 function migrateCredits(){
   if(!Array.isArray(state.credits)) state.credits = [];
+  if(!Array.isArray(state.jumiaLines)) state.jumiaLines = [];
   state.credits.forEach(c=>{
     if(!Array.isArray(c.versements)){
       c.versements = (Number(c.donne)||0) > 0 ? [{id:uid(), date:c.date, montant:Number(c.donne)}] : [];
@@ -1606,6 +1703,7 @@ function renderAll(){
   renderPurchases();
   renderCatalogue();
   renderCredits();
+  renderJumia();
 }
 
 loadState();
