@@ -407,6 +407,12 @@ td img{border-radius:12px!important}
 #purchasesKpi .kpi-value{font-size:clamp(18px,1.9vw,27px);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}
 @media (max-width:1100px){#purchasesKpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:480px){#purchasesKpi{grid-template-columns:1fr}}
+
+.stock-alert{gap:12px;flex-wrap:wrap}
+.alert-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:999px;font-size:14px;font-weight:600;background:#fff;border:1px solid var(--warn-bd)}
+.alert-chip strong{font-size:17px}
+.alert-chip.rupture{color:#B3261E;border-color:#F3B8B3;background:#FFF1F0}
+.alert-chip.faible{color:#B45309;border-color:#F5D08A;background:#FFF8E6}
 </style>
 </head>
 <body>
@@ -416,7 +422,7 @@ td img{border-radius:12px!important}
     <div class="seal" id="sealMark">D</div>
     <div class="masthead-text">
       <h1 id="bizName" contenteditable="true" spellcheck="false">DOUK BOUTIQUE</h1>
-      <div class="subtitle">Stock · Commandes · Achats fournisseurs · Catalogue · Crédits <span style="opacity:.55">· v34</span></div>
+      <div class="subtitle">Stock · Commandes · Achats fournisseurs · Catalogue · Crédits <span style="opacity:.55">· v36</span></div>
     </div>
     <div class="backup-actions">
       <button class="btn ghost small" onclick="exportBackup()">⬇ Sauvegarder</button>
@@ -1035,7 +1041,7 @@ function openProductModal(id){
     document.getElementById('p-sell').value = p.sell;
     document.getElementById('p-threshold').value = p.threshold;
     addVariantLine({color:p.color, ref:p.ref, stockInitial:p.stockInitial, entrees:p.entrees, image:p.image}, false);
-    addBtn.style.display = 'none'; // en modification, une seule couleur à la fois
+    addBtn.style.display = ''; // on peut ajouter d'autres couleurs / produits à partir de cette fiche
   } else {
     document.getElementById('productModalTitle').textContent = 'Nouveau produit';
     ['p-name','p-cat','p-buy','p-sell'].forEach(fid=>document.getElementById(fid).value='');
@@ -1067,9 +1073,12 @@ function saveProduct(){
 
   const id = document.getElementById('p-id').value;
   if(id){
-    // modification : une seule couleur, on met à jour la fiche existante
+    // modification : la 1re ligne met à jour la fiche existante, les lignes ajoutées créent de nouvelles fiches (même nom, catégorie et prix)
     const data = { name, cat, buy, sell, threshold, ...readRow(rows[0]) };
     Object.assign(state.products.find(x=>x.id===id), data);
+    rows.slice(1).forEach(row=>{
+      state.products.push({ id: uid(), name, cat, buy, sell, threshold, ...readRow(row) });
+    });
   } else {
     // création : une fiche produit par couleur renseignée
     rows.forEach(row=>{
@@ -1199,19 +1208,18 @@ function renderStock(){
   document.getElementById('cnt-stock').textContent = state.products.length;
   const wrap = document.getElementById('stockTableWrap');
 
-  // bannière d'alerte : liste tous les produits en stock faible ou en rupture
+  // bannière d'alerte : seulement le nombre de produits en rupture / en stock faible (sans lister les articles)
   const alerts = state.products.map(p=>({p, avail: availableStock(p)}))
     .filter(x=>x.avail<=x.p.threshold);
   const banner = document.getElementById('stockAlertBanner');
   if(alerts.length>0){
     const ruptureCount = alerts.filter(x=>x.avail<=0).length;
     const faibleCount = alerts.length - ruptureCount;
-    const names = alerts.map(x=>`${esc(x.p.name)} (${x.avail})`).join(', ');
-    const parts = [];
-    if(ruptureCount) parts.push(`${ruptureCount} en rupture`);
-    if(faibleCount) parts.push(`${faibleCount} en stock faible`);
+    const chips = [];
+    if(ruptureCount) chips.push(`<span class="alert-chip rupture"><span class="alert-icon">⛔</span><strong>${ruptureCount}</strong> en rupture</span>`);
+    if(faibleCount) chips.push(`<span class="alert-chip faible"><span class="alert-icon">⚠</span><strong>${faibleCount}</strong> en stock faible</span>`);
     banner.style.display = 'flex';
-    banner.innerHTML = `<span class="alert-icon">⚠</span><span><strong>${parts.join(', ')}</strong> — <span class="alert-list">${names}</span></span>`;
+    banner.innerHTML = chips.join('');
   } else {
     banner.style.display = 'none';
     banner.innerHTML = '';
