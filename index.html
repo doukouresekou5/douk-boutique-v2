@@ -413,6 +413,16 @@ td img{border-radius:12px!important}
 .alert-chip strong{font-size:17px}
 .alert-chip.rupture{color:#B3261E;border-color:#F3B8B3;background:#FFF1F0}
 .alert-chip.faible{color:#B45309;border-color:#F5D08A;background:#FFF8E6}
+
+.alert-chip{cursor:pointer;font-family:inherit;transition:transform .12s,box-shadow .12s}
+.alert-chip:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(0,0,0,.12)}
+.alert-chip.on{box-shadow:0 0 0 2px currentColor}
+.alert-chip.all{background:var(--card);color:var(--ink);border-color:var(--rule)}
+.sup-link{color:var(--petrol);font-weight:700;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.sup-link:hover{text-decoration:underline}
+tr.sup-row{cursor:pointer}tr.sup-row.on td{background:color-mix(in srgb,var(--petrol) 12%,#fff)}
+.sup-filter{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:12px 16px;margin-bottom:10px;border-radius:12px;background:color-mix(in srgb,var(--petrol) 10%,#fff);border:1px solid color-mix(in srgb,var(--petrol) 25%,#fff);font-size:14px}
+.sup-filter .btn{margin-left:auto}
 </style>
 </head>
 <body>
@@ -422,7 +432,7 @@ td img{border-radius:12px!important}
     <div class="seal" id="sealMark">D</div>
     <div class="masthead-text">
       <h1 id="bizName" contenteditable="true" spellcheck="false">DOUK BOUTIQUE</h1>
-      <div class="subtitle">Stock · Commandes · Achats fournisseurs · Catalogue · Crédits <span style="opacity:.55">· v37</span></div>
+      <div class="subtitle">Stock · Commandes · Achats fournisseurs · Catalogue · Crédits <span style="opacity:.55">· v38</span></div>
     </div>
     <div class="backup-actions">
       <button class="btn ghost small" onclick="exportBackup()">⬇ Sauvegarder</button>
@@ -1202,6 +1212,8 @@ document.getElementById('jumiaPick').addEventListener('change', (e)=>{
   saveState(); renderJumia();
 });
 
+let stockAlertFilter = '';   // '' | 'rupture' | 'faible'
+function toggleStockAlert(k){ stockAlertFilter = stockAlertFilter===k ? '' : k; renderStock(); const w=document.getElementById('stockTableWrap'); if(stockAlertFilter && w) w.scrollIntoView({behavior:'smooth',block:'start'}); }
 function renderStock(){
   const search = document.getElementById('stockSearch').value.toLowerCase();
   const catF = document.getElementById('stockCatFilter').value;
@@ -1209,6 +1221,9 @@ function renderStock(){
     (!search || p.name.toLowerCase().includes(search) || p.ref.toLowerCase().includes(search) || (p.color||'').toLowerCase().includes(search)) &&
     (!catF || p.cat===catF)
   );
+  if(stockAlertFilter){
+    list = list.filter(p=>{ const a = availableStock(p); return stockAlertFilter==='rupture' ? a<=0 : (a>0 && a<=p.threshold); });
+  }
   document.getElementById('cnt-stock').textContent = state.products.length;
   const wrap = document.getElementById('stockTableWrap');
 
@@ -1220,11 +1235,15 @@ function renderStock(){
     const ruptureCount = alerts.filter(x=>x.avail<=0).length;
     const faibleCount = alerts.length - ruptureCount;
     const chips = [];
-    if(ruptureCount) chips.push(`<span class="alert-chip rupture"><span class="alert-icon">⛔</span><strong>${ruptureCount}</strong> en rupture</span>`);
-    if(faibleCount) chips.push(`<span class="alert-chip faible"><span class="alert-icon">⚠</span><strong>${faibleCount}</strong> en stock faible</span>`);
+    if(stockAlertFilter==='rupture' && !ruptureCount) stockAlertFilter = '';
+    if(stockAlertFilter==='faible' && !faibleCount) stockAlertFilter = '';
+    if(ruptureCount) chips.push(`<button type="button" class="alert-chip rupture ${stockAlertFilter==='rupture'?'on':''}" onclick="toggleStockAlert('rupture')" title="Afficher les produits en rupture"><span class="alert-icon">⛔</span><strong>${ruptureCount}</strong> en rupture</button>`);
+    if(faibleCount) chips.push(`<button type="button" class="alert-chip faible ${stockAlertFilter==='faible'?'on':''}" onclick="toggleStockAlert('faible')" title="Afficher les produits en stock faible"><span class="alert-icon">⚠</span><strong>${faibleCount}</strong> en stock faible</button>`);
+    if(stockAlertFilter) chips.push(`<button type="button" class="alert-chip all" onclick="toggleStockAlert('${stockAlertFilter}')">✕ Tout afficher</button>`);
     banner.style.display = 'flex';
     banner.innerHTML = chips.join('');
   } else {
+    stockAlertFilter = '';
     banner.style.display = 'none';
     banner.innerHTML = '';
   }
@@ -1700,6 +1719,13 @@ function deletePurchase(id){
   saveState(); renderAll();
 }
 
+let purchaseSupplierFilter = '';   // '' = tous les fournisseurs
+const supKey = a => a.supplier || 'Sans fournisseur';
+function filterPurchasesBySupplier(name){
+  purchaseSupplierFilter = (purchaseSupplierFilter===name) ? '' : name;
+  renderPurchases();
+  const w = document.getElementById('purchasesTableWrap'); if(w && purchaseSupplierFilter) w.scrollIntoView({behavior:'smooth',block:'start'});
+}
 function renderSupplierTotals(list){
   const totalsWrap = document.getElementById('purchasesSupplierTotals');
   if(list.length===0){ totalsWrap.innerHTML = ''; return; }
@@ -1715,8 +1741,8 @@ function renderSupplierTotals(list){
   totalsWrap.innerHTML = `<table class="dense"><thead><tr>
       <th>Fournisseur</th><th>Nombre d'achats</th><th>Total</th>
     </tr></thead><tbody>
-    ${rows.map(([supplier,v])=>`<tr>
-      <td data-label="Fournisseur">${esc(supplier)}</td>
+    ${rows.map(([supplier,v])=>`<tr class="sup-row ${supplier===purchaseSupplierFilter?'on':''}" data-s="${esc(supplier)}" onclick="filterPurchasesBySupplier(this.dataset.s)" title="Voir les produits de ce fournisseur">
+      <td data-label="Fournisseur"><span class="sup-link">${esc(supplier)}</span></td>
       <td data-label="Nombre d'achats">${v.count}</td>
       <td data-label="Total" class="total-line">${money(v.total)}</td>
     </tr>`).join('')}
@@ -1726,9 +1752,11 @@ function renderSupplierTotals(list){
 
 function renderPurchases(){
   const statusF = document.getElementById('purchaseStatusFilter').value;
-  let list = state.purchases.filter(a=>!statusF || a.status===statusF).slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const base = state.purchases.filter(a=>!statusF || a.status===statusF).slice().sort((a,b)=>b.date.localeCompare(a.date));
+  if(purchaseSupplierFilter && !base.some(a=>supKey(a)===purchaseSupplierFilter)) purchaseSupplierFilter = '';
+  const list = purchaseSupplierFilter ? base.filter(a=>supKey(a)===purchaseSupplierFilter) : base;
   document.getElementById('cnt-achats').textContent = state.purchases.length;
-  renderSupplierTotals(list);
+  renderSupplierTotals(base);
   const fd = d=>d ? d.split('-').reverse().join('/') : '—', last = state.purchases.map(a=>a.date).sort().pop();
   const kc = (ic,bg,l,v)=>`<div class="kpi-card ic"><div class="kpi-ic" style="background:${bg}">${ic}</div><div><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div></div>`;
   document.getElementById('purchasesKpi').innerHTML = kc('🚚','#D7F1E5','Total commandes',state.purchases.length)+kc('📦','#DCE9F7','Total articles',state.purchases.reduce((t,a)=>t+(a.qty||0),0))+kc('💰','#EADFFB','Total achat (CFA)',money(state.purchases.reduce((t,a)=>t+(a.totalCfa||0),0)))+kc('📅','#FFEFC2','Dernière commande',fd(last));
@@ -1737,7 +1765,9 @@ function renderPurchases(){
     wrap.innerHTML = `<div class="empty"><div class="big">Aucun achat enregistré</div>Enregistre un achat fournisseur pour suivre tes commandes.</div>`;
     return;
   }
-  wrap.innerHTML = `<table class="dense"><thead><tr>
+  const nbArt = list.reduce((t,a)=>t+(a.qty||0),0);
+  const supBar = purchaseSupplierFilter ? `<div class="sup-filter">🏭 Produits de <b>${esc(purchaseSupplierFilter)}</b> · ${list.length} achat${list.length>1?'s':''} · ${nbArt} article${nbArt>1?'s':''}<button type="button" class="btn ghost small" data-s="${esc(purchaseSupplierFilter)}" onclick="filterPurchasesBySupplier(this.dataset.s)">✕ Tout afficher</button></div>` : '';
+  wrap.innerHTML = supBar + `<table class="dense"><thead><tr>
     <th>Image</th><th>N° commande</th><th>Produit acheté</th><th>Fournisseur</th><th>Date</th><th>Quantité</th>
     <th>Prix devise</th><th>Taux</th><th>Prix unit. CFA</th><th>Prix total CFA</th><th>Frais / article</th>
     <th>Prix d'achat</th><th>Prix de vente</th><th>Marge</th><th>Référence</th><th>Statut</th><th></th>
@@ -1746,7 +1776,7 @@ function renderPurchases(){
       <td data-label="Image">${a.image ? `<img src="${a.image}">` : '—'}</td>
       <td data-label="N° commande">${esc(a.numero)||'—'}</td>
       <td data-label="Produit acheté">${esc(a.productName)}</td>
-      <td data-label="Fournisseur">${esc(a.supplier)}</td>
+      <td data-label="Fournisseur"><span class="sup-link" data-s="${esc(supKey(a))}" onclick="filterPurchasesBySupplier(this.dataset.s)" title="Voir tous les produits de ce fournisseur">${esc(a.supplier)}</span></td>
       <td data-label="Date">${a.date}</td>
       <td data-label="Quantité">${a.qty}</td>
       <td data-label="Prix devise">${a.priceUsd ? currencySymbol(a.currency)+a.priceUsd.toLocaleString('fr-FR') : '—'}</td>
