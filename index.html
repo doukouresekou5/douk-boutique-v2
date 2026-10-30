@@ -422,7 +422,7 @@ td img{border-radius:12px!important}
     <div class="seal" id="sealMark">D</div>
     <div class="masthead-text">
       <h1 id="bizName" contenteditable="true" spellcheck="false">DOUK BOUTIQUE</h1>
-      <div class="subtitle">Stock · Commandes · Achats fournisseurs · Catalogue · Crédits <span style="opacity:.55">· v36</span></div>
+      <div class="subtitle">Stock · Commandes · Achats fournisseurs · Catalogue · Crédits <span style="opacity:.55">· v37</span></div>
     </div>
     <div class="backup-actions">
       <button class="btn ghost small" onclick="exportBackup()">⬇ Sauvegarder</button>
@@ -761,6 +761,10 @@ td img{border-radius:12px!important}
       </div>
       <div class="ord-card">
         <div class="ord-f"><span class="ord-ic2">👤</span><div class="field"><label>Client <i>*</i></label><div class="inp"><em>👤</em><input id="o-client" placeholder="Nom du client"></div></div></div>
+      </div>
+      <div class="ord-card two">
+        <div class="ord-f"><span class="ord-ic2">📞</span><div class="field"><label>Téléphone</label><div class="inp"><em>📞</em><input id="o-phone" type="tel" inputmode="tel" placeholder="Ex. 07 00 00 00 00"></div></div></div>
+        <div class="ord-f"><span class="ord-ic2">📍</span><div class="field"><label>Lieu de livraison</label><div class="inp"><em>📍</em><input id="o-lieu" placeholder="Ex. Cocody, Angré 8e tranche"></div></div></div>
       </div>
       <div class="ord-card">
         <div class="ord-title"><span class="ord-ic2 sq">📦</span><b>Produits commandés</b></div>
@@ -1320,6 +1324,8 @@ function openOrderModal(id){
     document.getElementById('orderModalTitle').textContent = 'Modifier la commande';
     document.getElementById('o-numero').value = o.numero || '';
     document.getElementById('o-client').value = o.client;
+    document.getElementById('o-phone').value = o.phone || '';
+    document.getElementById('o-lieu').value = o.lieu || '';
     document.getElementById('o-date').value = o.date;
     document.getElementById('o-status').value = o.status;
     document.getElementById('o-loss').value = o.loss || '';
@@ -1329,6 +1335,8 @@ function openOrderModal(id){
     document.getElementById('orderModalTitle').textContent = 'Nouvelle commande';
     document.getElementById('o-numero').value = nextOrderNumero(todayStr());
     document.getElementById('o-client').value = '';
+    document.getElementById('o-phone').value = '';
+    document.getElementById('o-lieu').value = '';
     document.getElementById('o-date').value = todayStr();
     document.getElementById('o-status').value = 'attente';
     document.getElementById('o-loss').value = '';
@@ -1360,7 +1368,7 @@ function saveOrder(){
   const dateCmd = document.getElementById('o-date').value || todayStr();
   const numero = document.getElementById('o-numero').value.trim() || nextOrderNumero(dateCmd);
 
-  const data = { numero, client, date: dateCmd, items, status: newStatus, loss: newStatus==='retournee' ? (parseFloat(document.getElementById('o-loss').value)||0) : 0 };
+  const data = { numero, client, phone: document.getElementById('o-phone').value.trim(), lieu: document.getElementById('o-lieu').value.trim(), date: dateCmd, items, status: newStatus, loss: newStatus==='retournee' ? (parseFloat(document.getElementById('o-loss').value)||0) : 0 };
 
   if(existing) Object.assign(existing, data);
   else state.orders.push({id:uid(), ...data});
@@ -1409,7 +1417,7 @@ function renderOrders(){
     return;
   }
   wrap.innerHTML = `<table><thead><tr>
-    <th>Image</th><th>N° commande</th><th>Client</th><th>Date</th><th>Produits</th><th>Total</th><th>Statut</th><th></th>
+    <th>Image</th><th>N° commande</th><th>Client</th><th>Téléphone</th><th>Lieu de livraison</th><th>Date</th><th>Produits</th><th>Total</th><th>Statut</th><th></th>
   </tr></thead><tbody>
   ${list.map(o=>{
     const names = o.items.map(it=>{
@@ -1424,6 +1432,8 @@ function renderOrders(){
       <td data-label="Image">${orderImg}</td>
       <td data-label="N° commande">${esc(o.numero)||'—'}</td>
       <td data-label="Client">${esc(o.client)}</td>
+      <td data-label="Téléphone">${o.phone ? `<a href="tel:${esc(o.phone.replace(/\s+/g,''))}" style="color:inherit;">${esc(o.phone)}</a>` : '—'}</td>
+      <td data-label="Lieu de livraison">${esc(o.lieu)||'—'}</td>
       <td data-label="Date">${o.date}</td>
       <td data-label="Produits">${esc(names)}</td>
       <td data-label="Total" class="total-line">${money(orderTotal(o))}</td>
@@ -2232,7 +2242,7 @@ function printReceipt(id){
   const rows = o.items.map(it=>{ const p = state.products.find(x=>x.id===it.productId); return p ? `<tr><td>${esc(p.name)} ${esc(p.color||'')}<br>${it.qty} × ${money(p.sell)}</td><td class="r">${money(p.sell*it.qty)}</td></tr>` : ''; }).join('');
   const w = window.open('', '_blank', 'width=420,height=640');
   if(!w){ alert('Autorise les fenêtres pop-up pour imprimer le reçu.'); return; }
-  w.document.write(`<html><head><title>Reçu ${esc(o.numero)}</title><style>body{font-family:Arial,sans-serif;max-width:360px;margin:20px auto;color:#111}h2{margin:0}.c{text-align:center}table{width:100%;border-collapse:collapse;margin:12px 0}td{padding:6px 0;border-bottom:1px dashed #bbb;font-size:13px}.r{text-align:right}.t{font-size:17px;font-weight:bold}</style></head><body><h2 class="c">${esc(state.bizName||'')}</h2><p class="c">Reçu ${esc(o.numero||'')}<br>${o.date}<br>Client : ${esc(o.client||'')}</p><table>${rows}<tr class="t"><td>Total</td><td class="r">${money(orderTotal(o))}</td></tr></table><p class="c">Merci pour votre confiance !</p><script>window.onload=function(){window.print()}<\/script></body></html>`);
+  w.document.write(`<html><head><title>Reçu ${esc(o.numero)}</title><style>body{font-family:Arial,sans-serif;max-width:360px;margin:20px auto;color:#111}h2{margin:0}.c{text-align:center}table{width:100%;border-collapse:collapse;margin:12px 0}td{padding:6px 0;border-bottom:1px dashed #bbb;font-size:13px}.r{text-align:right}.t{font-size:17px;font-weight:bold}</style></head><body><h2 class="c">${esc(state.bizName||'')}</h2><p class="c">Reçu ${esc(o.numero||'')}<br>${o.date}<br>Client : ${esc(o.client||'')}${o.phone?'<br>Tél : '+esc(o.phone):''}${o.lieu?'<br>Livraison : '+esc(o.lieu):''}</p><table>${rows}<tr class="t"><td>Total</td><td class="r">${money(orderTotal(o))}</td></tr></table><p class="c">Merci pour votre confiance !</p><script>window.onload=function(){window.print()}<\/script></body></html>`);
   w.document.close();
 }
 
